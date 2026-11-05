@@ -5,11 +5,24 @@ set -euo pipefail
 # Escalation is chosen by the caller: plain sudo in a terminal, pkexec
 # under the GUI, which has no tty to prompt on.
 SUDO="${FIXER_SUDO:-sudo}"
-SCRIPT=/usr/lib/waydroid/data/scripts/waydroid-net.sh
+FIXER_REPO="${FIXER_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+SCRIPT="${WAYDROID_NET_SCRIPT:-/usr/lib/waydroid/data/scripts/waydroid-net.sh}"
 BACKUP="$SCRIPT.chromebook-fixer.orig"
-[ -f "$BACKUP" ] || $SUDO cp -a "$SCRIPT" "$BACKUP"
 
-$SUDO python3 - "$SCRIPT" <<'PY'
+if grep -q "chromebook-fixer" "$SCRIPT"; then
+    echo "already patched; nothing to do"
+    exit 0
+fi
+
+# One root step: back up, then patch. The backup is taken from the file as it
+# is now, unpatched, so after a waydroid upgrade it is the new version's
+# original rather than the first one ever seen (lib/orig-backup.sh).
+$SUDO env FIXER_DPKG_INFO="${FIXER_DPKG_INFO:-}" bash -s -- "$SCRIPT" "$FIXER_REPO/lib/orig-backup.sh" <<'ROOT'
+set -eu
+[ -n "${FIXER_DPKG_INFO:-}" ] || unset FIXER_DPKG_INFO
+. "$2"
+orig_backup "$1" 1
+python3 - "$1" <<'PY'
 import re, sys
 
 path = sys.argv[1]
@@ -73,4 +86,5 @@ assert src.split("\n")[0].startswith("#!"), "refusing to write: shebang is no lo
 open(path, "w").write(src)
 print(f"patched (iptables: {n4}, ip6tables: {n6})")
 PY
+ROOT
 echo "backup at $BACKUP"

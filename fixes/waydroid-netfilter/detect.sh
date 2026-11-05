@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # exit 0 = needed, 1 = not needed / not applicable, 2 = cannot tell
 set -uo pipefail
-SCRIPT=/usr/lib/waydroid/data/scripts/waydroid-net.sh
+SCRIPT="${WAYDROID_NET_SCRIPT:-/usr/lib/waydroid/data/scripts/waydroid-net.sh}"
 [ -f "$SCRIPT" ] || exit 1                      # waydroid not installed
 grep -q "chromebook-fixer" "$SCRIPT" && exit 1  # already patched by us
 
@@ -22,5 +22,13 @@ grep -qE '^IPTABLES_BIN="\$\(command -v iptables-legacy\)"' "$SCRIPT" && LEGACY_
 grep -qE '^IP6TABLES_BIN="\$\(command -v ip6tables-legacy\)"' "$SCRIPT" && LEGACY_FIRST=1
 [ "$LEGACY_FIRST" -eq 1 ] || exit 1
 
-echo "waydroid picks iptables-legacy first, but ip_tables cannot load on this kernel"
+FIXER_REPO="${FIXER_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+. "$FIXER_REPO/lib/orig-backup.sh"
+if orig_replaced "$SCRIPT"; then
+    # First line is the row's subtitle: lead with what happened.
+    echo "a waydroid update replaced the patched script; apply again"
+    echo "(waydroid picks iptables-legacy first, but ip_tables cannot load on this kernel)"
+else
+    echo "waydroid picks iptables-legacy first, but ip_tables cannot load on this kernel"
+fi
 exit 0

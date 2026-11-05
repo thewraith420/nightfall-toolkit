@@ -7,6 +7,7 @@ SUDO="${FIXER_SUDO:-sudo}"
 CONFIGS="${WAYDROID_LXC_CONFIGS:-/usr/lib/waydroid/data/configs/config_base /var/lib/waydroid/lxc/waydroid/config}"
 CMDLINE_SNAPSHOT="${WAYDROID_CMDLINE_SNAPSHOT:-/var/lib/waydroid/chromebook-fixer-cmdline}"
 PROC_CMDLINE="${PROC_CMDLINE:-/proc/cmdline}"
+FIXER_REPO="${FIXER_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 
 # Two unrelated LXC config bugs share this one fix id and one backup, because
 # they live in the same two files (Slate session's call, 2026-09-30).
@@ -48,17 +49,23 @@ PLAN=$(mktemp); trap 'rm -f "$PLAN"' EXIT
 CHANGED=0
 for f in $CONFIGS; do
     [ -f "$f" ] || continue
+    # Carries none of this fix's changes: a fresh copy from a waydroid
+    # upgrade (config_base) or a regenerated config (/var/lib). Its backup is
+    # then re-taken from it, see lib/orig-backup.sh.
+    pristine=1
+    grep -qF "$CMDLINE_SNAPSHOT" "$f" && pristine=0
+    grep -q "^lxc.hook.post-stop *= */bin/true" "$f" && pristine=0
     if grep -q "^lxc.hook.post-stop *= */dev/null" "$f"; then
-        printf 'hook\t%s\n' "$f" >> "$PLAN"
+        printf 'hook\t%s\t%s\n' "$f" "$pristine" >> "$PLAN"
         echo "will patch $f (post-stop hook)"
         CHANGED=1
     fi
     if is_broken_ro_mount "$f"; then
-        printf 'mount-fix\t%s\n' "$f" >> "$PLAN"
+        printf 'mount-fix\t%s\t%s\n' "$f" "$pristine" >> "$PLAN"
         echo "will migrate $f (read-only containment mount -> read-write)"
         CHANGED=1
     elif ! has_any_cmdline_mount "$f"; then
-        printf 'mount-add\t%s\n' "$f" >> "$PLAN"
+        printf 'mount-add\t%s\t%s\n' "$f" "$pristine" >> "$PLAN"
         echo "will contain $f (bind-mounts a private copy over the container's proc/cmdline)"
         CHANGED=1
     fi
@@ -78,12 +85,18 @@ REFRESH_SNAPSHOT=0
 [ -s "$PLAN" ] && REFRESH_SNAPSHOT=1
 [ -e "$CMDLINE_SNAPSHOT" ] && REFRESH_SNAPSHOT=1
 
-$SUDO bash -s -- "$PLAN" "$CMDLINE_SNAPSHOT" "$MOUNT_LINE" "$PROC_CMDLINE" "$REFRESH_SNAPSHOT" <<'ROOT'
+$SUDO env FIXER_DPKG_INFO="${FIXER_DPKG_INFO:-}" bash -s -- "$PLAN" "$CMDLINE_SNAPSHOT" "$MOUNT_LINE" "$PROC_CMDLINE" "$REFRESH_SNAPSHOT" "$FIXER_REPO/lib/orig-backup.sh" <<'ROOT'
 set -eu
 plan="$1" snapshot="$2" mount_line="$3" proc_cmdline="$4" refresh="$5"
-
-backed_up() { [ -f "$1.chromebook-fixer.orig" ]; }
-backup_once() { backed_up "$1" || cp -a "$1" "$1.chromebook-fixer.orig"; }
+[ -n "${FIXER_DPKG_INFO:-}" ] || unset FIXER_DPKG_INFO
+. "$6"
+# Once per file, before its first change in this run.
+backed=""
+backup_once() {
+    case " $backed " in *" $1 "*) return 0 ;; esac
+    orig_backup "$1" "$2"
+    backed="$backed $1"
+}
 
 if [ "$refresh" = 1 ]; then
     mkdir -p "$(dirname "$snapshot")"
@@ -106,18 +119,18 @@ if [ "$refresh" = 1 ]; then
     fi
 fi
 
-while IFS=$'\t' read -r action file; do
+while IFS=$'\t' read -r action file pristine; do
     case "$action" in
         hook)
-            backup_once "$file"
+            backup_once "$file" "$pristine"
             sed -i 's|^lxc.hook.post-stop *= */dev/null|lxc.hook.post-stop = /bin/true|' "$file"
             ;;
         mount-add)
-            backup_once "$file"
+            backup_once "$file" "$pristine"
             printf '%s\n' "$mount_line" >> "$file"
             ;;
         mount-fix)
-            backup_once "$file"
+            backup_once "$file" "$pristine"
             # Replace the whole broken line in place (not append+dedupe) -
             # a stray leftover ",ro," line must not survive alongside the
             # fixed one, since LXC honours every lxc.mount.entry it finds and

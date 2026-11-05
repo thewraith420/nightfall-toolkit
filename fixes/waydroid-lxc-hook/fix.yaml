@@ -42,7 +42,8 @@ description: |
   real one, which is the containment working as intended.
 danger: |
   Edits files owned by the waydroid package; an upgrade will overwrite them and
-  the fix will need re-applying. Originals are backed up alongside.
+  the fix will need re-applying (status reports it as needed again).
+  Originals are backed up alongside, re-taken from each new waydroid version.
 
   The containment mount is "optional": if it fails for any reason (an older
   LXC, a missing snapshot file), the container still starts, with the

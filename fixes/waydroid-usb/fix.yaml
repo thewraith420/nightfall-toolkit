@@ -15,4 +15,5 @@ description: |
 danger: |
   Gives Android apps access to every USB device on the machine. That is what
   makes security keys work, and it is also broader access than the container
-  had before. Edits waydroid's own config; an upgrade may overwrite it.
+  had before. Edits waydroid's own config and its lxc.py generator; an upgrade may
+  overwrite them, and status then reports the fix as needed again.

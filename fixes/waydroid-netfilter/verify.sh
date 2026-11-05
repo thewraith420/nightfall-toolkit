@@ -3,7 +3,7 @@
 # exit 0 = this fix is in place, 1 = it is not,
 #      3 = the script is already correct, but not because of this fix
 set -uo pipefail
-SCRIPT=/usr/lib/waydroid/data/scripts/waydroid-net.sh
+SCRIPT="${WAYDROID_NET_SCRIPT:-/usr/lib/waydroid/data/scripts/waydroid-net.sh}"
 [ -f "$SCRIPT" ] || exit 1
 
 if grep -q "chromebook-fixer" "$SCRIPT"; then

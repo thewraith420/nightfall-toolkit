@@ -4,8 +4,11 @@ name: Waydroid network start on kernels without legacy iptables
 risk: low
 danger: |
   Edits a file owned by the waydroid package. A waydroid upgrade will overwrite
-  it, silently undoing this fix; re-run apply afterwards. The original is kept
-  alongside as waydroid-net.sh.chromebook-fixer.orig and revert restores it.
+  it, silently undoing this fix; status then reports it as needed again, and
+  re-running apply restores it. The original is kept alongside as
+  waydroid-net.sh.chromebook-fixer.orig, re-taken from each new waydroid
+  version, and revert restores it. Revert refuses a backup that came from a
+  different version than the one installed.
 applies_to: {}
 description: |
   Waydroid's network script prefers iptables-legacy, which needs the
