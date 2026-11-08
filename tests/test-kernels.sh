@@ -238,6 +238,32 @@ head -c 10   /dev/zero > "$SRC/lib/modules/9.9.9-test/modules.dep"
 GOOD="$T/good.tar.gz"
 ( cd "$SRC" && tar czf "$GOOD" ./boot ./lib )
 
+# Ownership: a portable-installer tarball is built as a normal user, so its
+# members are recorded as that user with group-writable modes. Real, on the
+# Slate (2026-11-07): root's tar defaults to --same-owner and
+# --same-permissions, so an installed vmlinuz and modules tree came out owned
+# by bob, mode 0664. Any process running as that user could then replace the
+# kernel. fakeroot gives tar root's defaults without needing root.
+OWNED="$T/owned.tar.gz"
+( cd "$SRC" && tar czf "$OWNED" --owner=1234 --group=1234 --mode=g+w,o+w ./boot ./lib )
+if command -v fakeroot >/dev/null 2>&1; then
+    reset_install
+    FR="$T/fakeroot.state"; rm -f "$FR"
+    FIXER_SUDO="fakeroot -s $FR --" run_install install "$OWNED" >/dev/null 2>&1 \
+        || echo "FAIL: install under fakeroot did not succeed"
+    fake_out=$(fakeroot -i "$FR" -- stat -c "%u:%g %a" \
+        "$IBOOT/vmlinuz-9.9.9-test" "$IMODS/9.9.9-test" "$IMODS/9.9.9-test/kernel/test.ko")
+    owners=$(printf '%s\n' "$fake_out" | cut -d' ' -f1 | sort -u)
+    writable=""
+    for m in $(printf '%s\n' "$fake_out" | cut -d' ' -f2); do
+        (( 8#$m & 8#022 )) && writable=1
+    done
+    holds "install: files are root-owned, not the tarball's user" "$owners" = "0:0"
+    holds "install: no group- or world-writable kernel files" -z "$writable"
+else
+    echo "SKIP: fakeroot not installed - ownership tests not run"
+fi
+
 # No boot/vmlinuz-* inside at all.
 NOKERNEL="$T/nokernel.tar.gz"; echo hi > "$T/notes.txt"
 tar czf "$NOKERNEL" -C "$T" notes.txt

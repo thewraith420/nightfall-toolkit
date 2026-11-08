@@ -786,13 +786,28 @@ command -v update-grub >/dev/null 2>&1 || {
 # The archive's own paths (boot/..., lib/modules/...) are already the
 # destination layout relative to install_root, same as both existing
 # installers (which extract relative to / or a chroot's mount point).
+#
+# --no-same-owner: the tarball is built as a normal user, and root's tar
+# defaults to restoring that user - a kernel and modules tree any process
+# running as that user could replace (real, on the Slate, 2026-11-07).
+# --no-overwrite-dir: never restamp a directory that already exists from the
+# archive's entry for it. Modes are fixed explicitly below rather than with
+# --no-same-permissions, which only applies whatever umask sudo/pkexec left.
 mkdir -p "$install_root"
-tar xzf "$tarball" -C "$install_root" -T "$members" || {
+tar xzf "$tarball" -C "$install_root" -T "$members" \
+    --no-same-owner --no-overwrite-dir || {
     echo "error: extract failed - anything already written is a partial state;" >&2
     echo "re-run this install to overwrite it cleanly." >&2; exit 1; }
 
 [ -f "$boot/vmlinuz-$release" ]      || { echo "error: vmlinuz-$release missing after extract" >&2; exit 1; }
 [ -d "$modules/$release" ]           || { echo "error: modules for $release missing after extract" >&2; exit 1; }
+# Only as root: tests run this step unprivileged, where every file is the
+# caller's own anyway.
+[ "$(id -u)" = 0 ] && for f in "$boot/vmlinuz-$release" "$boot/System.map-$release" "$boot/config-$release" "$modules/$release"; do
+    [ -e "$f" ] || continue
+    chown -R root:root "$f" && chmod -R go-w "$f" || {
+        echo "error: could not make $f root-owned" >&2; exit 1; }
+done
 sync
 
 echo "depmod $release"

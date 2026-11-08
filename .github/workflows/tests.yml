@@ -27,6 +27,8 @@ jobs:
         run: ./tests/test-nightfall-boot-safety.sh
       - name: Nightfall backup housekeeping checks
         run: ./tests/test-nightfall-backups.sh
+      - name: fakeroot, for the kernel-install ownership checks
+        run: sudo apt-get install -y fakeroot
       - name: Kernel listing, removal guards and default
         run: ./tests/test-kernels.sh
       - name: Nightfall install detection (touchscreen, marker, GRUB)
